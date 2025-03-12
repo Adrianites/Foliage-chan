@@ -5,24 +5,20 @@ using UnityEditor;
 
 public class FoliageChan : MonoBehaviour
 {
-    public List<GameObject> foliagePrefabs; // List of foliage prefabs
-    public List<MeshRenderer> targetMeshes; // List of target meshes
-    public bool checkForOtherObjects = false; // Checkbox for checking other objects
+    public List<GameObject> foliagePrefabs;
+    public List<MeshRenderer> targetMeshes;
+    public bool checkForOtherObjects = false;
 
-    // Start is called before the first frame update
     void Start()
     {
-        // Initialize lists if not set in the inspector
         if (foliagePrefabs == null)
             foliagePrefabs = new List<GameObject>();
         if (targetMeshes == null)
             targetMeshes = new List<MeshRenderer>();
     }
 
-    // Update is called once per frame
     void Update()
     {
-        // Check for user input to place foliage
         if (Input.GetKeyDown(KeyCode.P))
         {
             PlaceFoliage();
@@ -35,16 +31,13 @@ public class FoliageChan : MonoBehaviour
         {
             foreach (var foliage in foliagePrefabs)
             {
-                // Randomly place foliage on the mesh
                 Vector3 randomPosition = GetRandomPointOnMesh(mesh);
 
-                // Ensure the random position is on the ground
                 if (!IsPositionOnGround(randomPosition))
                 {
                     continue;
                 }
 
-                // Check for other objects if the checkbox is ticked
                 if (checkForOtherObjects)
                 {
                     Collider[] colliders = Physics.OverlapSphere(randomPosition, 0.5f);
@@ -100,12 +93,12 @@ public class FoliageChanEditor : EditorWindow
         public Quantity quantity = Quantity.High;
         public int amountPerMesh = 10;
         public float placementProbability = 0.1f;
-        public float placementDepth = 0.0f; // Depth of placement below the mesh
+        public float placementDepth = 0.0f;
         public bool randomSize = false;
-        public bool checkForOtherObjects = false; // Checkbox for checking other objects
+        public bool checkForOtherObjects = false;
         public List<GameObject> placedObjects = new List<GameObject>();
         public Stack<List<GameObject>> undoStack = new Stack<List<GameObject>>();
-        public GameObject groupObject; // Reference to the group object
+        public GameObject groupObject;
     }
 
     private class ParentObjectData
@@ -138,7 +131,6 @@ public class FoliageChanEditor : EditorWindow
         {
             GUILayout.Label("Automatic Placement", EditorStyles.boldLabel);
 
-            // Parent Objects for Automatic Placement
             GUILayout.Label("Parent Objects", EditorStyles.label);
             if (GUILayout.Button("Add Parent Object"))
             {
@@ -153,12 +145,11 @@ public class FoliageChanEditor : EditorWindow
                 if (GUILayout.Button("Remove", GUILayout.Width(60)))
                 {
                     automaticParentObjectsData.RemoveAt(i);
-                    i--; // Adjust index after removal
+                    i--;
                     continue;
                 }
                 EditorGUILayout.EndHorizontal();
 
-                // Object Prefabs
                 GUILayout.Label("Object Prefabs", EditorStyles.label);
                 if (GUILayout.Button("Add Object Prefab"))
                 {
@@ -172,15 +163,13 @@ public class FoliageChanEditor : EditorWindow
                     if (GUILayout.Button("Remove", GUILayout.Width(60)))
                     {
                         automaticParentObjectsData[i].objectDataList.RemoveAt(j);
-                        j--; // Adjust index after removal
+                        j--;
                         continue;
                     }
                     EditorGUILayout.EndHorizontal();
 
-                    // Quantity
                     automaticParentObjectsData[i].objectDataList[j].quantity = (Quantity)EditorGUILayout.EnumPopup("Quantity", automaticParentObjectsData[i].objectDataList[j].quantity);
 
-                    // Amount per Mesh and Placement Probability
                     if (automaticParentObjectsData[i].objectDataList[j].quantity == Quantity.High)
                     {
                         automaticParentObjectsData[i].objectDataList[j].amountPerMesh = EditorGUILayout.IntField("Object Amount", automaticParentObjectsData[i].objectDataList[j].amountPerMesh);
@@ -190,12 +179,10 @@ public class FoliageChanEditor : EditorWindow
                         automaticParentObjectsData[i].objectDataList[j].placementProbability = EditorGUILayout.Slider("Object Placement Probability", automaticParentObjectsData[i].objectDataList[j].placementProbability, 0f, 1f);
                     }
 
-                    // Placement Depth, Random Size, and Check for Other Objects
                     automaticParentObjectsData[i].objectDataList[j].placementDepth = EditorGUILayout.FloatField("Placement Depth", automaticParentObjectsData[i].objectDataList[j].placementDepth);
                     automaticParentObjectsData[i].objectDataList[j].randomSize = EditorGUILayout.Toggle("Random Size", automaticParentObjectsData[i].objectDataList[j].randomSize);
                     automaticParentObjectsData[i].objectDataList[j].checkForOtherObjects = EditorGUILayout.Toggle("Check for Other Objects", automaticParentObjectsData[i].objectDataList[j].checkForOtherObjects);
 
-                    // Place Foliage and Undo Buttons for Object Prefab Section
                     EditorGUILayout.BeginHorizontal();
                     if (GUILayout.Button("Place Foliage"))
                     {
@@ -208,14 +195,13 @@ public class FoliageChanEditor : EditorWindow
                     EditorGUILayout.EndHorizontal();
 
                     EditorGUILayout.EndVertical();
-                    GUILayout.Space(5); // Add space between object prefabs
+                    GUILayout.Space(5);
                 }
 
                 EditorGUILayout.EndVertical();
-                GUILayout.Space(10); // Add space between parent objects
+                GUILayout.Space(10);
             }
 
-            // Place All Foliage and Undo All Foliage Buttons for Automatic Placement
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Place All Foliage"))
             {
@@ -231,7 +217,6 @@ public class FoliageChanEditor : EditorWindow
         {
             GUILayout.Label("Manual Placement", EditorStyles.boldLabel);
 
-            // Parent Objects for Manual Placement
             GUILayout.Label("Parent Objects", EditorStyles.label);
             if (GUILayout.Button("Add Parent Object"))
             {
@@ -246,12 +231,11 @@ public class FoliageChanEditor : EditorWindow
                 if (GUILayout.Button("Remove", GUILayout.Width(60)))
                 {
                     manualParentObjectsData.RemoveAt(i);
-                    i--; // Adjust index after removal
+                    i--;
                     continue;
                 }
                 EditorGUILayout.EndHorizontal();
 
-                // Object Prefabs
                 GUILayout.Label("Object Prefabs", EditorStyles.label);
                 if (GUILayout.Button("Add Object Prefab"))
                 {
@@ -265,15 +249,13 @@ public class FoliageChanEditor : EditorWindow
                     if (GUILayout.Button("Remove", GUILayout.Width(60)))
                     {
                         manualParentObjectsData[i].objectDataList.RemoveAt(j);
-                        j--; // Adjust index after removal
+                        j--;
                         continue;
                     }
                     EditorGUILayout.EndHorizontal();
 
-                    // Quantity
                     manualParentObjectsData[i].objectDataList[j].quantity = (Quantity)EditorGUILayout.EnumPopup("Quantity", manualParentObjectsData[i].objectDataList[j].quantity);
 
-                    // Amount per Mesh and Placement Probability
                     if (manualParentObjectsData[i].objectDataList[j].quantity == Quantity.High)
                     {
                         manualParentObjectsData[i].objectDataList[j].amountPerMesh = EditorGUILayout.IntField("Object Amount", manualParentObjectsData[i].objectDataList[j].amountPerMesh);
@@ -283,14 +265,11 @@ public class FoliageChanEditor : EditorWindow
                         manualParentObjectsData[i].objectDataList[j].placementProbability = EditorGUILayout.Slider("Object Placement Probability", manualParentObjectsData[i].objectDataList[j].placementProbability, 0f, 1f);
                     }
 
-                    // Placement Depth and Random Size
                     manualParentObjectsData[i].objectDataList[j].placementDepth = EditorGUILayout.FloatField("Placement Depth", manualParentObjectsData[i].objectDataList[j].placementDepth);
                     manualParentObjectsData[i].objectDataList[j].randomSize = EditorGUILayout.Toggle("Random Size", manualParentObjectsData[i].objectDataList[j].randomSize);
 
-                    // Check for Other Objects
                     manualParentObjectsData[i].objectDataList[j].checkForOtherObjects = EditorGUILayout.Toggle("Check for Other Objects", manualParentObjectsData[i].objectDataList[j].checkForOtherObjects);
 
-                    // Undo Button for Object Prefab Section
                     EditorGUILayout.BeginHorizontal();
                     if (GUILayout.Button("Undo"))
                     {
@@ -299,11 +278,11 @@ public class FoliageChanEditor : EditorWindow
                     EditorGUILayout.EndHorizontal();
 
                     EditorGUILayout.EndVertical();
-                    GUILayout.Space(5); // Add space between object prefabs
+                    GUILayout.Space(5);
                 }
 
                 EditorGUILayout.EndVertical();
-                GUILayout.Space(10); // Add space between parent objects
+                GUILayout.Space(10);
             }
 
             GUILayout.Label("Paintbrush Tool", EditorStyles.boldLabel);
@@ -320,7 +299,6 @@ public class FoliageChanEditor : EditorWindow
     {
         if (parentData.parentObject != null)
         {
-            // Create an empty parent object to group the placed foliage
             objectData.groupObject = new GameObject(objectData.prefab.name + " Group");
 
             MeshRenderer[] childMeshes = parentData.parentObject.GetComponentsInChildren<MeshRenderer>();
@@ -328,7 +306,6 @@ public class FoliageChanEditor : EditorWindow
             {
                 List<GameObject> currentPlacedFoliage = new List<GameObject>();
 
-                // Place objects based on amount per mesh
                 if (objectData.quantity == Quantity.High)
                 {
                     for (int i = 0; i < objectData.amountPerMesh; i++)
@@ -337,7 +314,6 @@ public class FoliageChanEditor : EditorWindow
                         {
                             Vector3 randomPosition = GetRandomPointOnMesh(mesh, objectData.placementDepth);
 
-                            // Check for other objects if the checkbox is ticked
                             if (objectData.checkForOtherObjects)
                             {
                                 Collider[] colliders = Physics.OverlapSphere(randomPosition, 0.5f);
@@ -352,12 +328,10 @@ public class FoliageChanEditor : EditorWindow
                                 }
                                 if (hasOtherObjects)
                                 {
-                                    // Skip this position if other objects are found
                                     continue;
                                 }
                             }
 
-                            // Ensure the object is not spawned in the air
                             if (Physics.Raycast(randomPosition, Vector3.down, out RaycastHit hit))
                             {
                                 randomPosition = hit.point;
@@ -365,7 +339,7 @@ public class FoliageChanEditor : EditorWindow
 
                             GameObject foliageInstance = (GameObject)PrefabUtility.InstantiatePrefab(objectData.prefab);
                             foliageInstance.transform.position = randomPosition;
-                            foliageInstance.transform.parent = objectData.groupObject.transform; // Set the parent to the group object
+                            foliageInstance.transform.parent = objectData.groupObject.transform;
                             if (objectData.randomSize)
                             {
                                 float randomScale = Random.Range(0.8f, 1.2f);
@@ -377,14 +351,12 @@ public class FoliageChanEditor : EditorWindow
                     }
                 }
 
-                // Place objects based on probability
                 if (objectData.quantity == Quantity.Low && Random.value < objectData.placementProbability)
                 {
                     if (mesh != null && objectData.prefab != null)
                     {
                         Vector3 randomPosition = GetRandomPointOnMesh(mesh, objectData.placementDepth);
 
-                        // Check for other objects if the checkbox is ticked
                         if (objectData.checkForOtherObjects)
                         {
                             Collider[] colliders = Physics.OverlapSphere(randomPosition, 0.5f);
@@ -399,12 +371,10 @@ public class FoliageChanEditor : EditorWindow
                             }
                             if (hasOtherObjects)
                             {
-                                // Skip this position if other objects are found
                                 continue;
                             }
                         }
 
-                        // Ensure the object is not spawned in the air
                         if (Physics.Raycast(randomPosition, Vector3.down, out RaycastHit hit))
                         {
                             randomPosition = hit.point;
@@ -412,7 +382,7 @@ public class FoliageChanEditor : EditorWindow
 
                         GameObject foliageInstance = (GameObject)PrefabUtility.InstantiatePrefab(objectData.prefab);
                         foliageInstance.transform.position = randomPosition;
-                        foliageInstance.transform.parent = objectData.groupObject.transform; // Set the parent to the group object
+                        foliageInstance.transform.parent = objectData.groupObject.transform;
                         if (objectData.randomSize)
                         {
                             float randomScale = Random.Range(0.8f, 1.2f);
@@ -454,7 +424,6 @@ public class FoliageChanEditor : EditorWindow
         objectData.placedObjects.Clear();
         objectData.undoStack.Clear();
 
-        // Destroy the group object
         if (objectData.groupObject != null)
         {
             DestroyImmediate(objectData.groupObject);
@@ -496,7 +465,7 @@ public class FoliageChanEditor : EditorWindow
         Vector3 vertex3 = mesh.vertices[mesh.triangles[triangleIndex + 2]];
 
         Vector3 randomPoint = vertex1 + Random.value * (vertex2 - vertex1) + Random.value * (vertex3 - vertex1);
-        randomPoint -= new Vector3(0, depth, 0); // Adjust for placement depth
+        randomPoint -= new Vector3(0, depth, 0);
         return meshRenderer.transform.TransformPoint(randomPoint);
     }
 
@@ -520,7 +489,6 @@ public class FoliageChanEditor : EditorWindow
                 {
                     foreach (var objectData in parentData.objectDataList)
                     {
-                        // Create an empty parent object to group the placed foliage
                         if (objectData.groupObject == null)
                         {
                             objectData.groupObject = new GameObject(objectData.prefab.name + " Group");
@@ -538,7 +506,6 @@ public class FoliageChanEditor : EditorWindow
                                 {
                                     if (objectData.prefab != null)
                                     {
-                                        // Check for other objects if the checkbox is ticked
                                         if (objectData.checkForOtherObjects)
                                         {
                                             Collider[] colliders = Physics.OverlapSphere(position, 0.5f);
@@ -553,12 +520,10 @@ public class FoliageChanEditor : EditorWindow
                                             }
                                             if (hasOtherObjects)
                                             {
-                                                // Skip this position if other objects are found
                                                 continue;
                                             }
                                         }
 
-                                        // Ensure the object is not spawned in the air
                                         if (Physics.Raycast(position, Vector3.down, out RaycastHit hitInfo))
                                         {
                                             position = hitInfo.point;
@@ -566,7 +531,7 @@ public class FoliageChanEditor : EditorWindow
 
                                         GameObject foliageInstance = (GameObject)PrefabUtility.InstantiatePrefab(objectData.prefab);
                                         foliageInstance.transform.position = position - new Vector3(0, objectData.placementDepth, 0);
-                                        foliageInstance.transform.parent = objectData.groupObject.transform; // Set the parent to the group object
+                                        foliageInstance.transform.parent = objectData.groupObject.transform;
                                         if (objectData.randomSize)
                                         {
                                             float randomScale = Random.Range(0.8f, 1.2f);
