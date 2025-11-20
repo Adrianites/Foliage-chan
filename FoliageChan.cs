@@ -1,7 +1,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 
 public class FoliageChan : MonoBehaviour
 {
@@ -80,6 +82,7 @@ public class FoliageChan : MonoBehaviour
     }
 }
 
+﻿#if UNITY_EDITOR
 public class FoliageChanEditor : EditorWindow
 {
     private enum PlacementMode { Automatic, Manual }
@@ -99,12 +102,14 @@ public class FoliageChanEditor : EditorWindow
         public List<GameObject> placedObjects = new List<GameObject>();
         public Stack<List<GameObject>> undoStack = new Stack<List<GameObject>>();
         public GameObject groupObject;
+        public bool foldout = true;
     }
 
     private class ParentObjectData
     {
         public GameObject parentObject;
         public List<ObjectData> objectDataList = new List<ObjectData>();
+        public bool foldout = true;
     }
 
     private List<ParentObjectData> automaticParentObjectsData = new List<ParentObjectData>();
@@ -112,6 +117,21 @@ public class FoliageChanEditor : EditorWindow
     private Vector2 scrollPosition;
     private float brushSize = 1.0f;
     private int brushDensity = 10;
+    private double lastPaintTime = 0.0;
+    private float paintInterval = 0.05f;
+    private GUIStyle prefabBoxStyle;
+    private GUIStyle sectionHeader;
+    private GUIStyle boxHeader;
+
+    private Texture2D MakeTex(int width, int height, Color col)
+    {
+        Texture2D tex = new Texture2D(width, height);
+        Color[] colors = new Color[width * height];
+        for (int i = 0; i < colors.Length; i++) colors[i] = col;
+        tex.SetPixels(colors);
+        tex.Apply();
+        return tex;
+    }
 
     [MenuItem("Tools/Foliage-chan")]
     public static void ShowWindow()
@@ -123,83 +143,157 @@ public class FoliageChanEditor : EditorWindow
     {
         GUILayout.Label("Foliage Tool", EditorStyles.boldLabel);
 
-        placementMode = (PlacementMode)EditorGUILayout.EnumPopup("Placement Mode", placementMode);
+        placementMode = (PlacementMode)GUILayout.Toolbar((int)placementMode, new[] { "Automatic", "Manual" });
+
+        if (sectionHeader == null)
+        {
+            sectionHeader = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
+        }
+        if (boxHeader == null)
+        {
+            boxHeader = new GUIStyle(EditorStyles.foldout) { fontStyle = FontStyle.Bold };
+        }
+        if (prefabBoxStyle == null)
+        {
+            prefabBoxStyle = new GUIStyle("box");
+            prefabBoxStyle.padding = new RectOffset(6, 6, 4, 6);
+            prefabBoxStyle.margin = new RectOffset(4, 4, 4, 4);
+            prefabBoxStyle.normal.background = MakeTex(1, 1, new Color(0.22f, 0.28f, 0.35f, 0.95f));
+        }
 
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
         if (placementMode == PlacementMode.Automatic)
         {
-            GUILayout.Label("Automatic Placement", EditorStyles.boldLabel);
+            GUILayout.Label("Automatic Placement", sectionHeader);
 
             GUILayout.Label("Parent Objects", EditorStyles.label);
             if (GUILayout.Button("Add Parent Object"))
             {
                 automaticParentObjectsData.Add(new ParentObjectData());
             }
-            for (int i = 0; i < automaticParentObjectsData.Count; i++)
+            int api = 0;
+            while (api < automaticParentObjectsData.Count)
             {
+                var parentData = automaticParentObjectsData[api];
+                bool removeParent = false;
                 EditorGUILayout.BeginVertical("box");
-                GUILayout.Label("Parent Object", EditorStyles.boldLabel);
+                parentData.foldout = EditorGUILayout.Foldout(parentData.foldout, parentData.parentObject != null ? parentData.parentObject.name : "<Parent Object>", true, boxHeader);
+                if (!parentData.foldout)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    parentData.parentObject = (GameObject)EditorGUILayout.ObjectField(parentData.parentObject, typeof(GameObject), true);
+                    if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                    {
+                        foreach (var od in parentData.objectDataList) { UndoAllObjectsInSection(od); }
+                        removeParent = true;
+                    }
+                    EditorGUILayout.EndHorizontal();
+                    EditorGUILayout.EndVertical();
+                    GUILayout.Space(6);
+                    if (removeParent)
+                    {
+                        automaticParentObjectsData.RemoveAt(api);
+                        continue;
+                    }
+                    api++;
+                    continue;
+                }
                 EditorGUILayout.BeginHorizontal();
-                automaticParentObjectsData[i].parentObject = (GameObject)EditorGUILayout.ObjectField(automaticParentObjectsData[i].parentObject, typeof(GameObject), true);
+                parentData.parentObject = (GameObject)EditorGUILayout.ObjectField(parentData.parentObject, typeof(GameObject), true);
                 if (GUILayout.Button("Remove", GUILayout.Width(60)))
                 {
-                    automaticParentObjectsData.RemoveAt(i);
-                    i--;
-                    continue;
+                    foreach (var od in parentData.objectDataList)
+                    {
+                        UndoAllObjectsInSection(od);
+                    }
+                    removeParent = true;
                 }
                 EditorGUILayout.EndHorizontal();
 
-                GUILayout.Label("Object Prefabs", EditorStyles.label);
-                if (GUILayout.Button("Add Object Prefab"))
+                if (!removeParent)
                 {
-                    automaticParentObjectsData[i].objectDataList.Add(new ObjectData());
+                    GUILayout.Label($"Object Prefabs ({parentData.objectDataList.Count})", EditorStyles.label);
+                    if (GUILayout.Button("Add Object Prefab"))
+                    {
+                        parentData.objectDataList.Add(new ObjectData());
+                    }
+
+                    int j = 0;
+                    while (j < parentData.objectDataList.Count)
+                    {
+                        var objData = parentData.objectDataList[j];
+                        bool removeObj = false;
+                        EditorGUILayout.BeginVertical(prefabBoxStyle);
+                        EditorGUILayout.BeginHorizontal();
+                        objData.foldout = EditorGUILayout.Foldout(objData.foldout, objData.prefab != null ? objData.prefab.name : "<Prefab>", true, boxHeader);
+                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                        {
+                            removeObj = true;
+                        }
+                        EditorGUILayout.EndHorizontal();
+                        if (!objData.foldout)
+                        {
+                            if (removeObj)
+                            {
+                                parentData.objectDataList.RemoveAt(j);
+                                EditorGUILayout.EndVertical();
+                                continue;
+                            }
+                            EditorGUILayout.EndVertical();
+                            GUILayout.Space(4);
+                            j++;
+                            continue;
+                        }
+                        objData.prefab = (GameObject)EditorGUILayout.ObjectField("Prefab", objData.prefab, typeof(GameObject), false);
+
+                        if (!removeObj)
+                        {
+                            objData.quantity = (Quantity)EditorGUILayout.EnumPopup("Quantity", objData.quantity);
+                            if (objData.quantity == Quantity.High)
+                            {
+                                objData.amountPerMesh = EditorGUILayout.IntField("Object Amount", objData.amountPerMesh);
+                            }
+                            else if (objData.quantity == Quantity.Low)
+                            {
+                                objData.placementProbability = EditorGUILayout.Slider("Object Placement Probability", objData.placementProbability, 0f, 1f);
+                            }
+                            // Always visible essential settings
+                            objData.placementDepth = EditorGUILayout.FloatField("Placement Depth", objData.placementDepth);
+                            objData.randomSize = EditorGUILayout.Toggle("Random Size", objData.randomSize);
+                            objData.checkForOtherObjects = EditorGUILayout.Toggle("Check for Other Objects", objData.checkForOtherObjects);
+
+                            EditorGUILayout.BeginHorizontal();
+                            if (GUILayout.Button("Place Foliage"))
+                            {
+                                PlaceFoliageForObject(parentData, objData);
+                            }
+                            if (GUILayout.Button("Undo"))
+                            {
+                                UndoAllObjectsInSection(objData);
+                            }
+                            EditorGUILayout.EndHorizontal();
+                        }
+                        EditorGUILayout.EndVertical();
+                        GUILayout.Space(5);
+
+                        if (removeObj)
+                        {
+                            parentData.objectDataList.RemoveAt(j);
+                            continue; // do not increment j
+                        }
+                        j++;
+                    }
                 }
-                for (int j = 0; j < automaticParentObjectsData[i].objectDataList.Count; j++)
-                {
-                    EditorGUILayout.BeginVertical("box");
-                    EditorGUILayout.BeginHorizontal();
-                    automaticParentObjectsData[i].objectDataList[j].prefab = (GameObject)EditorGUILayout.ObjectField(automaticParentObjectsData[i].objectDataList[j].prefab, typeof(GameObject), false);
-                    if (GUILayout.Button("Remove", GUILayout.Width(60)))
-                    {
-                        automaticParentObjectsData[i].objectDataList.RemoveAt(j);
-                        j--;
-                        continue;
-                    }
-                    EditorGUILayout.EndHorizontal();
-
-                    automaticParentObjectsData[i].objectDataList[j].quantity = (Quantity)EditorGUILayout.EnumPopup("Quantity", automaticParentObjectsData[i].objectDataList[j].quantity);
-
-                    if (automaticParentObjectsData[i].objectDataList[j].quantity == Quantity.High)
-                    {
-                        automaticParentObjectsData[i].objectDataList[j].amountPerMesh = EditorGUILayout.IntField("Object Amount", automaticParentObjectsData[i].objectDataList[j].amountPerMesh);
-                    }
-                    else if (automaticParentObjectsData[i].objectDataList[j].quantity == Quantity.Low)
-                    {
-                        automaticParentObjectsData[i].objectDataList[j].placementProbability = EditorGUILayout.Slider("Object Placement Probability", automaticParentObjectsData[i].objectDataList[j].placementProbability, 0f, 1f);
-                    }
-
-                    automaticParentObjectsData[i].objectDataList[j].placementDepth = EditorGUILayout.FloatField("Placement Depth", automaticParentObjectsData[i].objectDataList[j].placementDepth);
-                    automaticParentObjectsData[i].objectDataList[j].randomSize = EditorGUILayout.Toggle("Random Size", automaticParentObjectsData[i].objectDataList[j].randomSize);
-                    automaticParentObjectsData[i].objectDataList[j].checkForOtherObjects = EditorGUILayout.Toggle("Check for Other Objects", automaticParentObjectsData[i].objectDataList[j].checkForOtherObjects);
-
-                    EditorGUILayout.BeginHorizontal();
-                    if (GUILayout.Button("Place Foliage"))
-                    {
-                        PlaceFoliageForObject(automaticParentObjectsData[i], automaticParentObjectsData[i].objectDataList[j]);
-                    }
-                    if (GUILayout.Button("Undo"))
-                    {
-                        UndoAllObjectsInSection(automaticParentObjectsData[i].objectDataList[j]);
-                    }
-                    EditorGUILayout.EndHorizontal();
-
-                    EditorGUILayout.EndVertical();
-                    GUILayout.Space(5);
-                }
-
                 EditorGUILayout.EndVertical();
                 GUILayout.Space(10);
+
+                if (removeParent)
+                {
+                    automaticParentObjectsData.RemoveAt(api);
+                    continue; // do not increment api
+                }
+                api++;
             }
 
             EditorGUILayout.BeginHorizontal();
@@ -215,80 +309,138 @@ public class FoliageChanEditor : EditorWindow
         }
         else if (placementMode == PlacementMode.Manual)
         {
-            GUILayout.Label("Manual Placement", EditorStyles.boldLabel);
+            GUILayout.Label("Manual Placement", sectionHeader);
 
             GUILayout.Label("Parent Objects", EditorStyles.label);
             if (GUILayout.Button("Add Parent Object"))
             {
                 manualParentObjectsData.Add(new ParentObjectData());
             }
-            for (int i = 0; i < manualParentObjectsData.Count; i++)
+            int mpi = 0;
+            while (mpi < manualParentObjectsData.Count)
             {
+                var parentData = manualParentObjectsData[mpi];
+                bool removeParent = false;
                 EditorGUILayout.BeginVertical("box");
-                GUILayout.Label("Parent Object", EditorStyles.boldLabel);
+                parentData.foldout = EditorGUILayout.Foldout(parentData.foldout, parentData.parentObject != null ? parentData.parentObject.name : "<Parent Object>", true, boxHeader);
+                if (!parentData.foldout)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    parentData.parentObject = (GameObject)EditorGUILayout.ObjectField(parentData.parentObject, typeof(GameObject), true);
+                    if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                    {
+                        foreach (var od in parentData.objectDataList) { UndoAllObjectsInSection(od); }
+                        removeParent = true;
+                    }
+                    EditorGUILayout.EndHorizontal();
+                    EditorGUILayout.EndVertical();
+                    GUILayout.Space(6);
+                    if (removeParent)
+                    {
+                        manualParentObjectsData.RemoveAt(mpi);
+                        continue;
+                    }
+                    mpi++;
+                    continue;
+                }
                 EditorGUILayout.BeginHorizontal();
-                manualParentObjectsData[i].parentObject = (GameObject)EditorGUILayout.ObjectField(manualParentObjectsData[i].parentObject, typeof(GameObject), true);
+                parentData.parentObject = (GameObject)EditorGUILayout.ObjectField(parentData.parentObject, typeof(GameObject), true);
                 if (GUILayout.Button("Remove", GUILayout.Width(60)))
                 {
-                    manualParentObjectsData.RemoveAt(i);
-                    i--;
-                    continue;
+                    foreach (var od in parentData.objectDataList)
+                    {
+                        UndoAllObjectsInSection(od);
+                    }
+                    removeParent = true;
                 }
                 EditorGUILayout.EndHorizontal();
 
-                GUILayout.Label("Object Prefabs", EditorStyles.label);
-                if (GUILayout.Button("Add Object Prefab"))
+                if (!removeParent)
                 {
-                    manualParentObjectsData[i].objectDataList.Add(new ObjectData());
+                    GUILayout.Label($"Object Prefabs ({parentData.objectDataList.Count})", EditorStyles.label);
+                    if (GUILayout.Button("Add Object Prefab"))
+                    {
+                        parentData.objectDataList.Add(new ObjectData());
+                    }
+
+                    int j = 0;
+                    while (j < parentData.objectDataList.Count)
+                    {
+                        var objData = parentData.objectDataList[j];
+                        bool removeObj = false;
+                        EditorGUILayout.BeginVertical(prefabBoxStyle);
+                        EditorGUILayout.BeginHorizontal();
+                        objData.foldout = EditorGUILayout.Foldout(objData.foldout, objData.prefab != null ? objData.prefab.name : "<Prefab>", true, boxHeader);
+                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                        {
+                            removeObj = true;
+                        }
+                        EditorGUILayout.EndHorizontal();
+                        if (!objData.foldout)
+                        {
+                            if (removeObj)
+                            {
+                                parentData.objectDataList.RemoveAt(j);
+                                EditorGUILayout.EndVertical();
+                                continue;
+                            }
+                            EditorGUILayout.EndVertical();
+                            GUILayout.Space(4);
+                            j++;
+                            continue;
+                        }
+                        objData.prefab = (GameObject)EditorGUILayout.ObjectField("Prefab", objData.prefab, typeof(GameObject), false);
+
+                        if (!removeObj)
+                        {
+                            objData.quantity = (Quantity)EditorGUILayout.EnumPopup("Quantity", objData.quantity);
+                            if (objData.quantity == Quantity.High)
+                            {
+                                objData.amountPerMesh = EditorGUILayout.IntField("Object Amount", objData.amountPerMesh);
+                            }
+                            else if (objData.quantity == Quantity.Low)
+                            {
+                                objData.placementProbability = EditorGUILayout.Slider("Object Placement Probability", objData.placementProbability, 0f, 1f);
+                            }
+                            objData.placementDepth = EditorGUILayout.FloatField("Placement Depth", objData.placementDepth);
+                            objData.randomSize = EditorGUILayout.Toggle("Random Size", objData.randomSize);
+                            objData.checkForOtherObjects = EditorGUILayout.Toggle("Check for Other Objects", objData.checkForOtherObjects);
+
+                            EditorGUILayout.BeginHorizontal();
+                            if (GUILayout.Button("Undo"))
+                            {
+                                UndoAllObjectsInSection(objData);
+                            }
+                            EditorGUILayout.EndHorizontal();
+                        }
+                        EditorGUILayout.EndVertical();
+                        GUILayout.Space(5);
+
+                        if (removeObj)
+                        {
+                            parentData.objectDataList.RemoveAt(j);
+                            continue; // do not increment j
+                        }
+                        j++;
+                    }
                 }
-                for (int j = 0; j < manualParentObjectsData[i].objectDataList.Count; j++)
-                {
-                    EditorGUILayout.BeginVertical("box");
-                    EditorGUILayout.BeginHorizontal();
-                    manualParentObjectsData[i].objectDataList[j].prefab = (GameObject)EditorGUILayout.ObjectField(manualParentObjectsData[i].objectDataList[j].prefab, typeof(GameObject), false);
-                    if (GUILayout.Button("Remove", GUILayout.Width(60)))
-                    {
-                        manualParentObjectsData[i].objectDataList.RemoveAt(j);
-                        j--;
-                        continue;
-                    }
-                    EditorGUILayout.EndHorizontal();
-
-                    manualParentObjectsData[i].objectDataList[j].quantity = (Quantity)EditorGUILayout.EnumPopup("Quantity", manualParentObjectsData[i].objectDataList[j].quantity);
-
-                    if (manualParentObjectsData[i].objectDataList[j].quantity == Quantity.High)
-                    {
-                        manualParentObjectsData[i].objectDataList[j].amountPerMesh = EditorGUILayout.IntField("Object Amount", manualParentObjectsData[i].objectDataList[j].amountPerMesh);
-                    }
-                    else if (manualParentObjectsData[i].objectDataList[j].quantity == Quantity.Low)
-                    {
-                        manualParentObjectsData[i].objectDataList[j].placementProbability = EditorGUILayout.Slider("Object Placement Probability", manualParentObjectsData[i].objectDataList[j].placementProbability, 0f, 1f);
-                    }
-
-                    manualParentObjectsData[i].objectDataList[j].placementDepth = EditorGUILayout.FloatField("Placement Depth", manualParentObjectsData[i].objectDataList[j].placementDepth);
-                    manualParentObjectsData[i].objectDataList[j].randomSize = EditorGUILayout.Toggle("Random Size", manualParentObjectsData[i].objectDataList[j].randomSize);
-
-                    manualParentObjectsData[i].objectDataList[j].checkForOtherObjects = EditorGUILayout.Toggle("Check for Other Objects", manualParentObjectsData[i].objectDataList[j].checkForOtherObjects);
-
-                    EditorGUILayout.BeginHorizontal();
-                    if (GUILayout.Button("Undo"))
-                    {
-                        UndoAllObjectsInSection(manualParentObjectsData[i].objectDataList[j]);
-                    }
-                    EditorGUILayout.EndHorizontal();
-
-                    EditorGUILayout.EndVertical();
-                    GUILayout.Space(5);
-                }
-
                 EditorGUILayout.EndVertical();
                 GUILayout.Space(10);
+
+                if (removeParent)
+                {
+                    manualParentObjectsData.RemoveAt(mpi);
+                    continue; // do not increment mpi
+                }
+                mpi++;
             }
 
             GUILayout.Label("Paintbrush Tool", EditorStyles.boldLabel);
             brushSize = EditorGUILayout.Slider("Brush Size", brushSize, 0.1f, 10f);
             brushDensity = EditorGUILayout.IntSlider("Brush Density", brushDensity, 1, 100);
 
+            // Ensure we only subscribe once
+            SceneView.duringSceneGui -= OnSceneGUI;
             SceneView.duringSceneGui += OnSceneGUI;
         }
 
@@ -299,7 +451,10 @@ public class FoliageChanEditor : EditorWindow
     {
         if (parentData.parentObject != null)
         {
-            objectData.groupObject = new GameObject(objectData.prefab.name + " Group");
+            if (objectData.groupObject == null)
+            {
+                objectData.groupObject = new GameObject(objectData.prefab != null ? objectData.prefab.name + " Group" : "Foliage Group");
+            }
 
             MeshRenderer[] childMeshes = parentData.parentObject.GetComponentsInChildren<MeshRenderer>();
             foreach (var mesh in childMeshes)
@@ -320,6 +475,8 @@ public class FoliageChanEditor : EditorWindow
                                 bool hasOtherObjects = false;
                                 foreach (var collider in colliders)
                                 {
+                                    if (collider.transform == parentData.parentObject.transform || collider.transform.IsChildOf(parentData.parentObject.transform))
+                                        continue;
                                     if (collider.gameObject != objectData.groupObject && !objectData.placedObjects.Contains(collider.gameObject))
                                     {
                                         hasOtherObjects = true;
@@ -363,6 +520,8 @@ public class FoliageChanEditor : EditorWindow
                             bool hasOtherObjects = false;
                             foreach (var collider in colliders)
                             {
+                                if (collider.transform == parentData.parentObject.transform || collider.transform.IsChildOf(parentData.parentObject.transform))
+                                    continue;
                                 if (collider.gameObject != objectData.groupObject && !objectData.placedObjects.Contains(collider.gameObject))
                                 {
                                     hasOtherObjects = true;
@@ -482,65 +641,63 @@ public class FoliageChanEditor : EditorWindow
         {
             Handles.color = new Color(0, 1, 0, 0.2f);
             Handles.DrawSolidDisc(hit.point, hit.normal, brushSize);
-
-            if ((e.type == EventType.MouseDrag || e.type == EventType.MouseDown) && e.button == 0)
+            bool paintingEvent = (e.type == EventType.MouseDrag || e.type == EventType.MouseDown) && e.button == 0;
+            double now = EditorApplication.timeSinceStartup;
+            if (paintingEvent && now - lastPaintTime >= paintInterval)
             {
+                lastPaintTime = now;
                 foreach (var parentData in manualParentObjectsData)
                 {
                     foreach (var objectData in parentData.objectDataList)
                     {
+                        if (objectData.prefab == null || parentData.parentObject == null)
+                            continue;
+
                         if (objectData.groupObject == null)
                         {
                             objectData.groupObject = new GameObject(objectData.prefab.name + " Group");
                         }
 
                         List<GameObject> currentPlacedFoliage = new List<GameObject>();
+
                         for (int i = 0; i < brushDensity; i++)
                         {
-                            Vector3 randomOffset = Random.insideUnitSphere * brushSize;
-                            Vector3 position = hit.point + randomOffset;
-                            MeshRenderer[] childMeshes = parentData.parentObject.GetComponentsInChildren<MeshRenderer>();
-                            foreach (var mesh in childMeshes)
+                            Vector2 offset2D = Random.insideUnitCircle * brushSize;
+                            Vector3 basePos = hit.point + new Vector3(offset2D.x, 0f, offset2D.y) + Vector3.up * 1f;
+                            if (Physics.Raycast(basePos, Vector3.down, out RaycastHit surfaceHit, 3f))
                             {
-                                if (mesh.bounds.Contains(position))
+                                Vector3 placePos = surfaceHit.point - new Vector3(0, objectData.placementDepth, 0);
+
+                                if (objectData.checkForOtherObjects)
                                 {
-                                    if (objectData.prefab != null)
+                                    Collider[] colliders = Physics.OverlapSphere(placePos, 0.4f);
+                                    bool hasOtherObjects = false;
+                                    foreach (var collider in colliders)
                                     {
-                                        if (objectData.checkForOtherObjects)
+                                        if (parentData.parentObject != null && (collider.transform == parentData.parentObject.transform || collider.transform.IsChildOf(parentData.parentObject.transform)))
+                                            continue;
+                                        if (collider.gameObject != objectData.groupObject && !objectData.placedObjects.Contains(collider.gameObject))
                                         {
-                                            Collider[] colliders = Physics.OverlapSphere(position, 0.5f);
-                                            bool hasOtherObjects = false;
-                                            foreach (var collider in colliders)
-                                            {
-                                                if (collider.gameObject != objectData.groupObject && !objectData.placedObjects.Contains(collider.gameObject))
-                                                {
-                                                    hasOtherObjects = true;
-                                                    break;
-                                                }
-                                            }
-                                            if (hasOtherObjects)
-                                            {
-                                                continue;
-                                            }
+                                            hasOtherObjects = true;
+                                            break;
                                         }
-
-                                        if (Physics.Raycast(position, Vector3.down, out RaycastHit hitInfo))
-                                        {
-                                            position = hitInfo.point;
-                                        }
-
-                                        GameObject foliageInstance = (GameObject)PrefabUtility.InstantiatePrefab(objectData.prefab);
-                                        foliageInstance.transform.position = position - new Vector3(0, objectData.placementDepth, 0);
-                                        foliageInstance.transform.parent = objectData.groupObject.transform;
-                                        if (objectData.randomSize)
-                                        {
-                                            float randomScale = Random.Range(0.8f, 1.2f);
-                                            foliageInstance.transform.localScale = new Vector3(randomScale, randomScale, randomScale);
-                                        }
-                                        objectData.placedObjects.Add(foliageInstance);
-                                        currentPlacedFoliage.Add(foliageInstance);
+                                    }
+                                    if (hasOtherObjects)
+                                    {
+                                        continue;
                                     }
                                 }
+
+                                GameObject foliageInstance = (GameObject)PrefabUtility.InstantiatePrefab(objectData.prefab);
+                                foliageInstance.transform.position = placePos;
+                                foliageInstance.transform.parent = objectData.groupObject.transform;
+                                if (objectData.randomSize)
+                                {
+                                    float randomScale = Random.Range(0.8f, 1.2f);
+                                    foliageInstance.transform.localScale = new Vector3(randomScale, randomScale, randomScale);
+                                }
+                                objectData.placedObjects.Add(foliageInstance);
+                                currentPlacedFoliage.Add(foliageInstance);
                             }
                         }
                         if (currentPlacedFoliage.Count > 0)
@@ -559,3 +716,4 @@ public class FoliageChanEditor : EditorWindow
         SceneView.duringSceneGui -= OnSceneGUI;
     }
 }
+#endif
